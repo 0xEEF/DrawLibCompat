@@ -106,5 +106,24 @@
             <version>1.13-R0.1-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
+
+        <!--
+            Compile-time only annotations used throughout the codebase
+            (@NotNull/@Contract from JetBrains, @Nullable from JSR305).
+            Scoped "provided" since these aren't needed at runtime and
+            shouldn't be bundled into the shaded jar.
+        -->
+        <dependency>
+            <groupId>org.jetbrains</groupId>
+            <artifactId>annotations</artifactId>
+            <version>24.1.0</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.google.code.findbugs</groupId>
+            <artifactId>jsr305</artifactId>
+            <version>3.0.2</version>
+            <scope>provided</scope>
+        </dependency>
     </dependencies>
 </project>
