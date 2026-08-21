@@ -1,13 +1,16 @@
 package com.funnyboyroks.drawlib.renderer;
 
+import com.funnyboyroks.drawlib.util.Compat;
 import com.funnyboyroks.drawlib.util.Util;
 import com.funnyboyroks.drawlib.util.Vector;
 import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.Particle;
+import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Player;
+import org.bukkit.plugin.Plugin;
 import org.jetbrains.annotations.NotNull;
 
 import javax.annotation.Nullable;
@@ -18,8 +21,8 @@ import java.util.List;
  * <p>
  * Intended Usage:
  * <pre>
- *     ShapeRenderer renderer = new ShapeRenderer();
- * 
+ *     ShapeRenderer renderer = new ShapeRenderer(myPlugin); // pass your plugin for Folia support
+ *
  *     renderer.setColor(Color.RED);
  *     renderer.setStepSize(0.1);
  *     renderer.setReceivers(player);
@@ -27,16 +30,62 @@ import java.util.List;
  * </pre>
  *
  * <em>Note: The draw methods only show the particles once, it is recommended to draw them every tick.</em>
+ *
+ * <h2>Compatibility</h2>
+ * ShapeRenderer detects, at runtime, what the underlying server actually
+ * supports and adapts automatically -- a single compiled jar works across:
+ * <ul>
+ *     <li><b>Paper / Paper forks</b> (Purpur, Pufferfish, ...): uses Paper's
+ *     targeted, force-rendered {@code spawnParticle} overload -- identical
+ *     behaviour to the original DrawLib.</li>
+ *     <li><b>Vanilla Bukkit / CraftBukkit / Spigot</b>: falls back to
+ *     per-player {@link Player#spawnParticle}, or a world-wide particle if
+ *     no receivers were set. There is no "force show past render distance"
+ *     on these platforms, since that flag is a Paper-only addition.</li>
+ *     <li><b>Folia</b>: if a {@link Plugin} instance is supplied via the
+ *     constructor, every particle spawn is dispatched onto the correct
+ *     region thread automatically. Without a plugin instance, calls run on
+ *     whatever thread invoked them, which is only safe on non-Folia
+ *     servers.</li>
+ *     <li><b>Minecraft 1.13+</b>: uses {@link Particle.DustOptions} for
+ *     accurate, arbitrary particle colour (handles the {@code REDSTONE} to
+ *     {@code DUST} rename in 1.20.5 automatically).</li>
+ *     <li><b>Minecraft 1.9 - 1.12</b>: {@code Particle.DustOptions} doesn't
+ *     exist yet, so colour is approximated with the legacy "offsets as
+ *     RGB, count = 0" redstone-particle trick.</li>
+ * </ul>
+ * Minecraft versions older than 1.9 aren't supported, since those predate
+ * Bukkit's {@code Particle} enum entirely (a fundamentally different,
+ * string/id-based effect API would be required).
  */
 public class ShapeRenderer {
 
+    private final Plugin plugin; // Used only to schedule on the correct thread on Folia; may be null
+
     private Color        color; // Colour of the particles to be drawn
     private List<Player> receivers; // Players that will receive the particles
-    private boolean      force; // Force show particles
+    private boolean      force; // Force show particles (Paper only; ignored elsewhere)
     private double       step_size = .1; // Step between two particles
     private boolean      optimize; // Optimize particles
 
+    /**
+     * Create a renderer with no owning plugin.
+     * <p>
+     * This is fine on every server platform <em>except</em> Folia -- if you
+     * might run on Folia, use {@link #ShapeRenderer(Plugin)} instead so
+     * particle calls are dispatched to the correct region thread.
+     */
     public ShapeRenderer() {
+        this(null);
+    }
+
+    /**
+     * @param plugin Your plugin instance. Required for correct behaviour on
+     *               Folia (so drawing can be scheduled onto the right region
+     *               thread); ignored/unused on every other server platform.
+     */
+    public ShapeRenderer(@Nullable Plugin plugin) {
+        this.plugin = plugin;
         this.color = Color.RED;
         this.receivers = null;
         this.force = false;
@@ -83,7 +132,9 @@ public class ShapeRenderer {
     }
 
     /**
-     * @param force If the particle should be forceshown to the players
+     * @param force If the particle should be forceshown to the players. Paper (and forks) only --
+     *              silently has no effect on vanilla Bukkit/Spigot, since that server software has
+     *              no equivalent flag.
      */
     public void setForceShow(boolean force) {
         this.force = force;
@@ -95,21 +146,64 @@ public class ShapeRenderer {
      * @param point The location to draw
      */
     public void drawPoint(@NotNull Location point) {
-        point.getWorld().spawnParticle(
-            Particle.REDSTONE,
-            this.receivers,
-            null,
-            point.getX(),
-            point.getY(),
-            point.getZ(),
-            1,
-            0,
-            0,
-            0,
-            0,
-            new Particle.DustOptions(this.color, .5f),
-            this.force
-        );
+        Compat.runRegionAware(this.plugin, point, () -> this.spawnParticleAt(point));
+    }
+
+    /**
+     * Does the actual particle spawning, choosing the best API the running
+     * server supports. Always invoked on a thread that's safe to touch
+     * {@code point}'s world (either the calling thread on non-Folia servers,
+     * or the correct region thread on Folia).
+     */
+    private void spawnParticleAt(@NotNull Location point) {
+        World world = point.getWorld();
+        if (world == null || Compat.DUST_PARTICLE == null) {
+            return;
+        }
+
+        if (Compat.HAS_DUST_OPTIONS) {
+            Particle.DustOptions data = new Particle.DustOptions(this.color, .5f);
+
+            if (Compat.hasPaperParticleApi()) {
+                // Best case: Paper / Paper fork -- exact receivers + force-render support
+                Compat.spawnParticlePaper(
+                    world, Compat.DUST_PARTICLE, this.receivers,
+                    point.getX(), point.getY(), point.getZ(), data, this.force
+                );
+                return;
+            }
+
+            // Vanilla Bukkit/CraftBukkit/Spigot: no receivers/force overload,
+            // so target players manually (or broadcast if none were set).
+            if (this.receivers == null) {
+                world.spawnParticle(Compat.DUST_PARTICLE, point, 1, 0, 0, 0, 0, data);
+            } else {
+                for (Player p : this.receivers) {
+                    p.spawnParticle(Compat.DUST_PARTICLE, point, 1, 0, 0, 0, 0, data);
+                }
+            }
+            return;
+        }
+
+        // Pre-1.13 fallback: Particle.DustOptions doesn't exist yet. Fake
+        // the colour using the legacy "count = 0, offsets = RGB" redstone
+        // dust trick instead.
+        this.spawnLegacyColouredParticle(world, point);
+    }
+
+    private void spawnLegacyColouredParticle(@NotNull World world, @NotNull Location point) {
+        // Red must be > 0 or the client treats the particle as invisible/default-coloured.
+        double r = Math.max(this.color.getRed() / 255d, 0.0001d);
+        double g = this.color.getGreen() / 255d;
+        double b = this.color.getBlue() / 255d;
+
+        if (this.receivers == null) {
+            world.spawnParticle(Compat.DUST_PARTICLE, point, 0, r, g, b, 1);
+        } else {
+            for (Player p : this.receivers) {
+                p.spawnParticle(Compat.DUST_PARTICLE, point, 0, r, g, b, 1);
+            }
+        }
     }
 
     /**
@@ -313,8 +407,3 @@ public class ShapeRenderer {
         drawCuboid(pt1, pt2);
     }
 }
-
-
-
-
-

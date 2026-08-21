@@ -6,13 +6,20 @@
 
     <groupId>com.funnyboyroks</groupId>
     <artifactId>DrawLib</artifactId>
-    <version>1.1.0-SNAPSHOT</version>
+    <version>1.2.0-SNAPSHOT</version>
     <packaging>jar</packaging>
 
     <name>DrawLib</name>
 
     <properties>
-        <java.version>11</java.version>
+        <!--
+            Deliberately low: many old MC server versions (and the JREs
+            people still run them on) top out around Java 8. Nothing in
+            this codebase needs a newer language level, and Java's class
+            file format is forward-compatible, so this jar still runs fine
+            on modern JREs too.
+        -->
+        <java.version>8</java.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
@@ -61,6 +68,10 @@
 
     <repositories>
         <repository>
+            <id>spigot-repo</id>
+            <url>https://hub.spigotmc.org/nexus/content/repositories/snapshots/</url>
+        </repository>
+        <repository>
             <id>papermc-repo</id>
             <url>https://repo.papermc.io/repository/maven-public/</url>
         </repository>
@@ -71,10 +82,28 @@
     </repositories>
 
     <dependencies>
+        <!--
+            Compile against plain Spigot-API rather than paper-api.
+
+            This is deliberate: Paper's expanded spawnParticle(receivers,
+            source, ..., force) overload and Folia's scheduler classes are
+            NOT part of Spigot-API, so compiling against paper-api would
+            silently bake in a hard dependency on Paper being present at
+            runtime. Instead, ShapeRenderer/Compat reach for those
+            Paper/Folia-only APIs via reflection (see Compat.java) and fall
+            back to plain Spigot-API behaviour when they aren't there. That
+            means the exact same built jar loads and works on vanilla
+            Bukkit/CraftBukkit/Spigot, Paper, Paper forks, and Folia alike.
+
+            1.13 is chosen as the floor because it's the oldest version with
+            Particle.DustOptions (colourable dust particles); older servers
+            (1.9-1.12) are still supported at runtime via a legacy colour
+            trick in ShapeRenderer, they just aren't what we compile against.
+        -->
         <dependency>
-            <groupId>io.papermc.paper</groupId>
-            <artifactId>paper-api</artifactId>
-            <version>1.19.2-R0.1-SNAPSHOT</version>
+            <groupId>org.spigotmc</groupId>
+            <artifactId>spigot-api</artifactId>
+            <version>1.13-R0.1-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
     </dependencies>
