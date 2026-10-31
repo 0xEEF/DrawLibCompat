@@ -1,8 +1,8 @@
-[![](https://jitpack.io/v/funnyboy-roks/DrawLib.svg)](https://jitpack.io/#funnyboy-roks/DrawLib)
+[![](https://jitpack.io/v/0xEEF/DrawLibCompat.svg)](https://jitpack.io/#0xEEF/DrawLibCompat)
 
-# DrawLib
+# DrawLibCompat
 
-A simple library to draw some simple shapes using particles.
+A simple library to draw some simple shapes using particles. Fork of [DrawLib by funnyboy-roks](https://github.com/funnyboy-roks/DrawLib)
 
 ![Screenshot](./img/screenshot.png)
 
@@ -38,13 +38,13 @@ Add jitpack to your `repositories`:
 Add DrawLib to your `dependencies`:
 ```xml
 <dependency>
-    <groupId>com.github.funnyboy-roks</groupId>
-    <artifactId>DrawLib</artifactId>
-    <version>1.1.0-SNAPSHOT</version>
+    <groupId>com.github.0xEEF</groupId>
+    <artifactId>DrawLibCompat</artifactId>
+    <version>test</version>
 </dependency>
 ```
 
-For other tools, see the [JitPack](https://jitpack.io/#funnyboy-roks/DrawLib) page
+For other tools, see the [JitPack](https://jitpack.io/#0xEEF/DrawLibCompat) page
 
 ## Usage
 
